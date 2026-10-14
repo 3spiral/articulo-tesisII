@@ -1,0 +1,26 @@
+paths:
+  data_root: "../tesis-xai-steatosis-data"
+
+datasets:
+  behsof:
+    images_dir: "raw/BEHSOF/image_Data"
+    demo_csv: "raw/BEHSOF/Demo_data.csv"
+    images_csv: "raw/BEHSOF/BEHSOF_images.csv"
+
+  byra:
+    mat_file: "raw/Byra/dataset_liver_bmodes_steatosis_assessment_IJCARS.mat"
+
+outputs:
+  inventory_csv: "metadata/qc/BEHSOF_inventory.csv"
+  quality_audit_csv: "metadata/qc/BEHSOF_quality_audit.csv"
+
+  tal_contact_sheet_index: "metadata/qc/TAL_contact_sheet_index.csv"
+  beh_sample_review_csv: "metadata/qc/BEH_sample_review.csv"
+  beh_outliers_review_csv: "metadata/qc/BEH_outliers_review.csv"
+
+  manifest_csv: "metadata/BEHSOF_manifest.csv"
+  patient_folds_csv: "metadata/BEH_patient_folds.csv"
+
+  tal_contact_sheets_dir: "artifacts/qc/TAL_contact_sheets"
+  beh_sample_contact_sheets_dir: "artifacts/qc/BEH_sample_contact_sheets"
+  beh_outlier_review_dir: "artifacts/qc/BEH_outlier_review"
