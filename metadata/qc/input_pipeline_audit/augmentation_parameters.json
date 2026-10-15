@@ -1,0 +1,56 @@
+{
+  "created_at_utc": "2026-10-15T21:13:05.271523+00:00",
+  "purpose": "visual_audit_of_affine_when_forced_to_apply",
+  "source_review": "metadata\\qc\\preprocessing_audit\\v2_review.csv",
+  "source_review_sha256": "ecf1ec1b257091743e048b2171f6cf9a23259c53de38f8154dc148f0056ba8c0",
+  "selection": {
+    "source": "same_40_images_as_preprocessing_v2_audit",
+    "images": 40,
+    "patients": 40,
+    "seed": 42
+  },
+  "base_pipeline": {
+    "output_size": [
+      224,
+      224
+    ],
+    "resize_interpolation": "bicubic",
+    "mode": "RGB"
+  },
+  "affine_audited": {
+    "forced_application_for_visual_audit": true,
+    "training_probability": 0.5,
+    "degrees": [
+      -5.0,
+      5.0
+    ],
+    "translate_fraction": [
+      0.03,
+      0.03
+    ],
+    "scale": [
+      0.95,
+      1.05
+    ],
+    "shear": null,
+    "interpolation": "bilinear",
+    "fill": 0
+  },
+  "software": {
+    "torch": "2.13.0+cu130",
+    "torchvision": "0.28.0+cu130"
+  },
+  "contact_sheets": [
+    "input_pipeline_audit_sheet_01.jpg",
+    "input_pipeline_audit_sheet_02.jpg",
+    "input_pipeline_audit_sheet_03.jpg",
+    "input_pipeline_audit_sheet_04.jpg",
+    "input_pipeline_audit_sheet_05.jpg",
+    "input_pipeline_audit_sheet_06.jpg",
+    "input_pipeline_audit_sheet_07.jpg",
+    "input_pipeline_audit_sheet_08.jpg",
+    "input_pipeline_audit_sheet_09.jpg",
+    "input_pipeline_audit_sheet_10.jpg"
+  ],
+  "acceptance_rule": "pass only if anatomy_preserved=yes and artifacts_acceptable=yes"
+}

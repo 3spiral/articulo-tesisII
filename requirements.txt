@@ -5,3 +5,5 @@ pillow==12.3.0
 PyYAML==6.0.3
 scikit-learn==1.9.1
 scipy==1.18.1
+torch==2.13.0
+torchvision==0.28.0
