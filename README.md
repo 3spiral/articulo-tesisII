@@ -47,17 +47,17 @@ Completado:
 - manifiesto maestro con trazabilidad de inclusiones y exclusiones;
 - definición de la variable objetivo binaria;
 - folds reproducibles por paciente;
-- selección del modelo controlado y del plan de evaluación.
+- selección del modelo controlado y del plan de evaluación;
+- auditoría visual y confirmación de la limpieza global de la interfaz BEH.
 
 Pendiente:
 
-- confirmar mediante auditoría visual las coordenadas globales de limpieza de la interfaz BEH;
 - cerrar tamaño de entrada, normalización y aumentos de datos;
 - implementar la generación reproducible de folds por imagen;
 - completar el preprocesamiento, entrenamiento, predicción fuera de muestra y análisis estadístico;
 - incorporar los resultados del experimento.
 
-No se han entrenado todavía los modelos del artículo. `src/data/preprocess_behsof.py` se mantiene como marcador de posición hasta confirmar el procedimiento definitivo de preprocesamiento.
+No se han entrenado todavía los modelos del artículo. `src/data/preprocess_behsof.py` se mantiene como marcador de posición hasta cerrar el tamaño de entrada, la normalización y los aumentos de datos.
 
 ## Estructura del repositorio
 
@@ -72,6 +72,7 @@ tesis-xai-steatosis/
 │       ├── make_beh_sample_contact_sheets.py
 │       ├── make_beh_outlier_sheet.py
 │       ├── build_behsof_manifest.py
+│       ├── audit_beh_preprocessing.py
 │       └── preprocess_behsof.py
 ├── metadata/
 │   ├── BEHSOF_manifest.csv
@@ -80,6 +81,7 @@ tesis-xai-steatosis/
 ├── artifacts/
 │   └── qc/
 ├── docs/
+│   └── preprocessing_audit.md
 ├── results/
 ├── config.example.yaml
 ├── requirements.txt
