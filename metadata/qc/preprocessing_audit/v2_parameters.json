@@ -1,0 +1,58 @@
+{
+  "created_at_utc": "2026-10-15T03:03:03.486227+00:00",
+  "candidate": "v2",
+  "manifest": "metadata\\BEHSOF_manifest.csv",
+  "manifest_sha256": "e10b9bff8eabb8c8ea25c46c60ff1ccdade32e526190bec1f5ce5affcd158f10",
+  "eligibility_filter": {
+    "center": "BEH",
+    "include_final": true,
+    "patient_eligible": true
+  },
+  "eligible_images": 1388,
+  "eligible_patients": 95,
+  "selection": {
+    "seed": 42,
+    "patients_per_class": 20,
+    "images_per_patient": 1,
+    "sample_images": 40,
+    "sample_patients": 40
+  },
+  "candidate_transform": {
+    "crop_box": [
+      128,
+      0,
+      896,
+      768
+    ],
+    "top_mask_rows": [
+      0,
+      48
+    ],
+    "bottom_mask_rows": [
+      720,
+      768
+    ],
+    "bottom_left_mask": [
+      0,
+      688,
+      64,
+      720
+    ],
+    "processed_size": [
+      768,
+      768
+    ]
+  },
+  "contact_sheets": [
+    "preprocessing_audit_sheet_01.jpg",
+    "preprocessing_audit_sheet_02.jpg",
+    "preprocessing_audit_sheet_03.jpg",
+    "preprocessing_audit_sheet_04.jpg",
+    "preprocessing_audit_sheet_05.jpg",
+    "preprocessing_audit_sheet_06.jpg",
+    "preprocessing_audit_sheet_07.jpg",
+    "preprocessing_audit_sheet_08.jpg",
+    "preprocessing_audit_sheet_09.jpg",
+    "preprocessing_audit_sheet_10.jpg"
+  ]
+}

@@ -34,13 +34,13 @@ Desde la raíz del repositorio:
 python -m src.data.audit_beh_preprocessing --candidate v1
 ```
 
-El script solo lee los archivos originales. Para la primera candidata genera en `artifacts/qc/preprocessing_audit_v1/`:
+El script solo lee los archivos originales. Para la primera candidata genera:
 
-- diez hojas de contacto con pares original/procesado;
-- `preprocessing_audit_review.csv`, con una fila por imagen;
-- `preprocessing_audit_parameters.json`, con la semilla, el hash del manifiesto y las coordenadas evaluadas.
+- diez hojas de contacto con pares original/procesado en `artifacts/qc/preprocessing_audit_v1/`;
+- `metadata/qc/preprocessing_audit/v1_review.csv`, con una fila por imagen;
+- `metadata/qc/preprocessing_audit/v1_parameters.json`, con la semilla, el hash del manifiesto y las coordenadas evaluadas.
 
-La carpeta de salida está ignorada por Git porque contiene imágenes médicas derivadas. El script se detiene si la carpeta ya existe para no sobrescribir una revisión previa.
+La salida visual está ignorada por Git porque contiene imágenes médicas derivadas. Los archivos documentales se versionan para conservar la trazabilidad. El script se detiene si ya existe la salida visual o alguno de los archivos documentales de la candidata, para no sobrescribir una revisión previa.
 
 ## Criterios de revisión
 
@@ -70,7 +70,9 @@ Los casos que no superaron la regla candidata fueron:
 | 17 | `BEH89111` | `BEH89111/Image3.jpg` | Fragmento mínimo de texto periférico y presencia de una anotación interna. |
 | 39 | `BEH74231` | `BEH74231/Image11.jpg` | Fragmento mínimo de texto periférico. |
 
-La ficha completa se conserva localmente en `artifacts/qc/preprocessing_audit_v1/preprocessing_audit_review.csv`. Conforme al criterio preespecificado, la primera transformación candidata no se confirma.
+La ficha completa se conserva en `metadata/qc/preprocessing_audit/v1_review.csv`. Conforme al criterio preespecificado, la primera transformación candidata no se confirma.
+
+`v1_parameters.json` se conserva sin alteraciones respecto de la ejecución original. Fue generado antes de incorporar al script el selector explícito de candidata, por lo que no contiene el campo `candidate` ni el campo `bottom_left_mask`; el nombre del archivo y las coordenadas registradas identifican esta ejecución como v1.
 
 ## Segunda transformación candidata (v2)
 
@@ -84,7 +86,7 @@ La segunda candidata se genera mediante:
 python -m src.data.audit_beh_preprocessing --candidate v2
 ```
 
-Sus artefactos se guardan en `artifacts/qc/preprocessing_audit_v2/`.
+Sus hojas de contacto se guardan en `artifacts/qc/preprocessing_audit_v2/`; la ficha revisada y los parámetros se conservan en `metadata/qc/preprocessing_audit/v2_review.csv` y `metadata/qc/preprocessing_audit/v2_parameters.json`.
 
 La revisión de v2 sobre la misma muestra obtuvo:
 

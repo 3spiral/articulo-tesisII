@@ -1,8 +1,9 @@
-"""Genera una auditoría visual reproducible del preprocesamiento BEH.
+"""Este Script genera una auditoría visual reproducible del preprocesamiento BEH.
 
-El script solo lee imágenes originales seleccionadas por el manifiesto. Los
-artefactos derivados se escriben en ``artifacts/qc/preprocessing_audit`` y no
-modifican el dataset ni los reportes de control de calidad existentes.
+El script solo lee imágenes originales seleccionadas por el manifiesto. Las
+hojas de contacto se escriben en ``artifacts/qc`` y la evidencia documental en
+``metadata/qc/preprocessing_audit``. No modifica el dataset ni los reportes de
+control de calidad existentes.
 """
 
 from __future__ import annotations
@@ -33,7 +34,8 @@ MASK_BOTTOM_LEFT_RIGHT = 64
 MASK_BOTTOM_LEFT_TOP = 688
 
 EXPECTED_SOURCE_SIZE = (1024, 768)
-OUTPUT_ROOT = PROJECT_ROOT / "artifacts" / "qc"
+VISUAL_OUTPUT_ROOT = PROJECT_ROOT / "artifacts" / "qc"
+METADATA_OUTPUT_ROOT = PROJECT_ROOT / "metadata" / "qc" / "preprocessing_audit"
 
 CARD_WIDTH = 620
 CARD_HEIGHT = 335
@@ -67,7 +69,9 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_font(size: int) -> ImageFont.ImageFont:
+def load_font(
+    size: int,
+) -> ImageFont.ImageFont | ImageFont.FreeTypeFont:
     try:
         return ImageFont.truetype("arial.ttf", size)
     except OSError:
@@ -310,15 +314,18 @@ def sha256(path: Path) -> str:
 
 def main() -> None:
     args = parse_args()
-    output_dir = OUTPUT_ROOT / f"preprocessing_audit_{args.candidate}"
-    review_csv = output_dir / "preprocessing_audit_review.csv"
-    parameters_json = output_dir / "preprocessing_audit_parameters.json"
+    output_dir = VISUAL_OUTPUT_ROOT / f"preprocessing_audit_{args.candidate}"
+    review_csv = METADATA_OUTPUT_ROOT / f"{args.candidate}_review.csv"
+    parameters_json = METADATA_OUTPUT_ROOT / f"{args.candidate}_parameters.json"
 
-    if output_dir.exists():
+    if output_dir.exists() or review_csv.exists() or parameters_json.exists():
         raise FileExistsError(
-            f"La salida ya existe: {output_dir}\n"
-            "No se sobrescribirá. Muévela o elimínala deliberadamente si deseas "
-            "generar una auditoría nueva."
+            "Ya existe una salida visual o documental para esta candidata.\n"
+            f"Salida visual: {output_dir}\n"
+            f"Ficha de revisión: {review_csv}\n"
+            f"Parámetros: {parameters_json}\n"
+            "No se sobrescribirá ninguna evidencia. Muévela o elimínala "
+            "deliberadamente si deseas generar una auditoría nueva."
         )
 
     eligible = load_eligible_manifest()
@@ -342,6 +349,7 @@ def main() -> None:
         loaded.append((row, image, processed))
 
     output_dir.mkdir(parents=True)
+    METADATA_OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
 
     cards: list[Image.Image] = []
     review_rows: list[dict[str, object]] = []
@@ -425,10 +433,11 @@ def main() -> None:
         encoding="utf-8",
     )
 
-    print(f"Auditoría generada en: {output_dir}")
+    print(f"Hojas de contacto generadas en: {output_dir}")
     print(f"Imágenes revisables: {len(review_rows)}")
     print(f"Hojas de contacto: {len(sheet_filenames)}")
     print(f"Ficha de revisión: {review_csv}")
+    print(f"Parámetros: {parameters_json}")
 
 
 if __name__ == "__main__":

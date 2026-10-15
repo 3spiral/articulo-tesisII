@@ -78,6 +78,11 @@ tesis-xai-steatosis/
 │   ├── BEHSOF_manifest.csv
 │   ├── BEH_patient_folds.csv
 │   └── qc/
+│       └── preprocessing_audit/
+│           ├── v1_review.csv
+│           ├── v1_parameters.json
+│           ├── v2_review.csv
+│           └── v2_parameters.json
 ├── artifacts/
 │   └── qc/
 ├── docs/
@@ -109,6 +114,8 @@ Codigo_articulo/
 ```
 
 ## Configuración local
+
+Se recomienda utilizar Python 3.13. El proyecto se ha verificado con Python 3.13.7 y el código requiere como mínimo Python 3.10.
 
 Crear y activar un entorno virtual en Windows PowerShell:
 
@@ -147,7 +154,30 @@ patient_eligible == True
 
 Los reportes situados en `metadata/qc/` son artefactos intermedios de trazabilidad. En particular, las alertas del reporte de outliers fueron generadas mediante heurísticas automáticas y posteriormente revisadas; no constituyen una clasificación vigente ni reemplazan al manifiesto final.
 
+`metadata/qc/preprocessing_audit/` conserva las fichas revisadas y los parámetros de las candidatas v1 y v2. Las hojas de contacto asociadas permanecen localmente en `artifacts/qc/` y no se versionan.
+
 Los datasets originales y los contact sheets no se versionan. Los archivos de `raw` deben permanecer inalterados; todo preprocesamiento producirá copias derivadas en ubicaciones separadas.
+
+## Política de versionado
+
+La raíz del repositorio es `tesis-xai-steatosis`. La carpeta hermana `tesis-xai-steatosis-data` permanece fuera de Git y contiene los datos originales y derivados de gran tamaño.
+
+Se versionan:
+
+- código fuente y pruebas;
+- documentación metodológica;
+- configuración reproducible de ejemplo;
+- manifiestos y metadatos tabulares necesarios para la trazabilidad;
+- resultados tabulares finales que no contengan imágenes médicas.
+
+Se excluyen mediante `.gitignore`:
+
+- datos médicos originales y artefactos visuales derivados;
+- `config.local.yaml` y archivos de variables de entorno;
+- entornos virtuales, cachés y archivos temporales;
+- pesos, checkpoints y modelos exportados.
+
+Los cambios metodológicos se desarrollan en ramas específicas y se integran en `main` mediante Pull Requests después de revisar los archivos incluidos. Ningún script debe modificar los archivos de `raw`.
 
 ## Reproducibilidad
 
