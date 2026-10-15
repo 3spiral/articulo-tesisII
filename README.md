@@ -48,16 +48,18 @@ Completado:
 - definición de la variable objetivo binaria;
 - folds reproducibles por paciente;
 - selección del modelo controlado y del plan de evaluación;
-- auditoría visual y confirmación de la limpieza global de la interfaz BEH.
+- auditoría visual y confirmación de la limpieza global de la interfaz BEH;
+- definición del tamaño de entrada, canales, normalización y aumentos;
+- implementación, pruebas y auditoría visual del pipeline de entrada, con 40 de
+  40 imágenes aprobadas.
 
 Pendiente:
 
-- cerrar tamaño de entrada, normalización y aumentos de datos;
 - implementar la generación reproducible de folds por imagen;
-- completar el preprocesamiento, entrenamiento, predicción fuera de muestra y análisis estadístico;
+- completar el entrenamiento, la predicción fuera de muestra y el análisis estadístico;
 - incorporar los resultados del experimento.
 
-No se han entrenado todavía los modelos del artículo. `src/data/preprocess_behsof.py` se mantiene como marcador de posición hasta cerrar el tamaño de entrada, la normalización y los aumentos de datos.
+No se han entrenado todavía los modelos del artículo. El pipeline se aplica en memoria y no modifica ni reemplaza las imágenes originales.
 
 ## Estructura del repositorio
 
@@ -73,7 +75,10 @@ tesis-xai-steatosis/
 │       ├── make_beh_outlier_sheet.py
 │       ├── build_behsof_manifest.py
 │       ├── audit_beh_preprocessing.py
+│       ├── audit_beh_input_pipeline.py
 │       └── preprocess_behsof.py
+├── tests/
+│   └── test_preprocess_behsof.py
 ├── metadata/
 │   ├── BEHSOF_manifest.csv
 │   ├── BEH_patient_folds.csv
@@ -86,7 +91,8 @@ tesis-xai-steatosis/
 ├── artifacts/
 │   └── qc/
 ├── docs/
-│   └── preprocessing_audit.md
+│   ├── preprocessing_audit.md
+│   └── input_pipeline.md
 ├── results/
 ├── config.example.yaml
 ├── requirements.txt
@@ -125,6 +131,11 @@ python -m venv .venv
 python -m pip install -r requirements.txt
 ```
 
+Las versiones de PyTorch y Torchvision se fijan conjuntamente en
+`requirements.txt`. Si se utilizará una GPU NVIDIA, debe instalarse la variante
+de PyTorch compatible con el controlador y la plataforma CUDA del equipo,
+conservando las mismas versiones declaradas del paquete.
+
 Crear la configuración local:
 
 ```powershell
@@ -155,6 +166,8 @@ patient_eligible == True
 Los reportes situados en `metadata/qc/` son artefactos intermedios de trazabilidad. En particular, las alertas del reporte de outliers fueron generadas mediante heurísticas automáticas y posteriormente revisadas; no constituyen una clasificación vigente ni reemplazan al manifiesto final.
 
 `metadata/qc/preprocessing_audit/` conserva las fichas revisadas y los parámetros de las candidatas v1 y v2. Las hojas de contacto asociadas permanecen localmente en `artifacts/qc/` y no se versionan.
+
+La especificación y los comandos de verificación del pipeline están documentados en `docs/input_pipeline.md`. La evidencia tabular de su auditoría se guardará en `metadata/qc/input_pipeline_audit/`; las hojas de contacto permanecerán fuera de Git.
 
 Los datasets originales y los contact sheets no se versionan. Los archivos de `raw` deben permanecer inalterados; todo preprocesamiento producirá copias derivadas en ubicaciones separadas.
 
