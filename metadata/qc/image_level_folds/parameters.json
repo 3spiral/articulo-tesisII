@@ -1,0 +1,23 @@
+{
+  "manifest": "metadata/BEHSOF_manifest.csv",
+  "manifest_sha256": "e10b9bff8eabb8c8ea25c46c60ff1ccdade32e526190bec1f5ce5affcd158f10",
+  "patient_folds": "metadata/BEH_patient_folds.csv",
+  "patient_folds_sha256": "c13f89009a7a031bf59454b5efdcb8a0c99da59e2103e44ec5a7c92e74546482",
+  "eligible_images": 1388,
+  "eligible_patients": 95,
+  "class_counts": {
+    "0": 421,
+    "1": 967
+  },
+  "n_splits": 5,
+  "shuffle": true,
+  "random_state": 42,
+  "strategy": "StratifiedKFold_image_level_5fold",
+  "sort_key": "relative_path",
+  "filters": {
+    "center": "BEH",
+    "include_final": true,
+    "patient_eligible": true
+  },
+  "scikit_learn_version": "1.9.1"
+}

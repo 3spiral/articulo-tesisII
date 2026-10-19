@@ -1,0 +1,11 @@
+protocol,fold,training_images,validation_images,validation_class_0_images,validation_class_1_images,training_patients,validation_patients,overlapping_patients
+image_level,1,1110,278,84,194,95,91,91
+image_level,2,1110,278,84,194,95,91,91
+image_level,3,1110,278,85,193,95,92,92
+image_level,4,1111,277,84,193,95,88,88
+image_level,5,1111,277,84,193,95,90,90
+patient_level,1,1101,287,76,211,76,19,0
+patient_level,2,1104,284,89,195,76,19,0
+patient_level,3,1134,254,82,172,76,19,0
+patient_level,4,1115,273,80,193,76,19,0
+patient_level,5,1098,290,94,196,76,19,0

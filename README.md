@@ -52,14 +52,20 @@ Completado:
 - definición del tamaño de entrada, canales, normalización y aumentos;
 - implementación, pruebas y auditoría visual del pipeline de entrada, con 40 de
   40 imágenes aprobadas.
+- generación reproducible y auditoría de los folds por imagen.
+- implementación y pruebas automatizadas del entrenamiento, la exportación de
+  probabilidades fuera de muestra y la evaluación comparativa.
 
 Pendiente:
 
-- implementar la generación reproducible de folds por imagen;
 - completar el entrenamiento, la predicción fuera de muestra y el análisis estadístico;
 - incorporar los resultados del experimento.
 
-No se han entrenado todavía los modelos del artículo. El pipeline se aplica en memoria y no modifica ni reemplaza las imágenes originales.
+El piloto y las ejecuciones parciales realizados durante la entrega provisional
+fueron descartados junto con todos sus resultados y checkpoints. Solo se
+conservan como antecedente histórico en el registro externo de decisiones; no
+constituyen evidencia activa ni se reutilizarán en el nuevo experimento. El
+pipeline se aplica en memoria y no modifica ni reemplaza las imágenes originales.
 
 ## Estructura del repositorio
 
@@ -67,7 +73,7 @@ No se han entrenado todavía los modelos del artículo. El pipeline se aplica en
 tesis-xai-steatosis/
 ├── src/
 │   ├── settings.py
-│   └── data/
+│   ├── data/
 │       ├── inventory_behsof.py
 │       ├── audit_behsof_quality.py
 │       ├── make_tal_contact_sheets.py
@@ -76,13 +82,23 @@ tesis-xai-steatosis/
 │       ├── build_behsof_manifest.py
 │       ├── audit_beh_preprocessing.py
 │       ├── audit_beh_input_pipeline.py
+│       ├── build_beh_image_folds.py
 │       └── preprocess_behsof.py
+│   ├── training/
+│   │   └── train_beh_crossval.py
+│   └── evaluation/
+│       └── evaluate_partition_protocols.py
 ├── tests/
-│   └── test_preprocess_behsof.py
+│   ├── test_build_beh_image_folds.py
+│   ├── test_evaluate_partition_protocols.py
+│   ├── test_preprocess_behsof.py
+│   └── test_train_beh_crossval.py
 ├── metadata/
 │   ├── BEHSOF_manifest.csv
+│   ├── BEH_image_folds.csv
 │   ├── BEH_patient_folds.csv
 │   └── qc/
+│       ├── image_level_folds/
 │       └── preprocessing_audit/
 │           ├── v1_review.csv
 │           ├── v1_parameters.json
@@ -91,8 +107,10 @@ tesis-xai-steatosis/
 ├── artifacts/
 │   └── qc/
 ├── docs/
+│   ├── image_level_folds.md
 │   ├── preprocessing_audit.md
-│   └── input_pipeline.md
+│   ├── input_pipeline.md
+│   └── training_protocol.md
 ├── results/
 ├── config.example.yaml
 ├── requirements.txt
@@ -196,7 +214,11 @@ Los cambios metodológicos se desarrollan en ramas específicas y se integran en
 
 Los dos protocolos deberán ejecutarse con los mismos componentes experimentales, salvo la unidad utilizada para construir los folds. Las decisiones técnicas se fijarán antes de observar las métricas comparativas.
 
-Actualmente puede reproducirse la etapa de inventario y control de calidad. La ejecución integral del experimento se documentará cuando se implementen los módulos pendientes.
+El código comprueba la identidad de la muestra y de los folds antes de entrenar,
+impide que una ejecución final se aparte accidentalmente de la configuración
+preespecificada y exige metadatos completos antes de aceptar predicciones para
+la evaluación. Los resultados definitivos deberán generarse desde cero con el
+árbol de trabajo revisado y versionado.
 
 ## Privacidad y distribución de datos
 
