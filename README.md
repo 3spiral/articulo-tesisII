@@ -61,11 +61,8 @@ Pendiente:
 - completar el entrenamiento, la predicción fuera de muestra y el análisis estadístico;
 - incorporar los resultados del experimento.
 
-El piloto y las ejecuciones parciales realizados durante la entrega provisional
-fueron descartados junto con todos sus resultados y checkpoints. Solo se
-conservan como antecedente histórico en el registro externo de decisiones; no
-constituyen evidencia activa ni se reutilizarán en el nuevo experimento. El
-pipeline se aplica en memoria y no modifica ni reemplaza las imágenes originales.
+El pipeline se aplica en memoria y no modifica ni reemplaza las imágenes
+originales.
 
 ## Estructura del repositorio
 

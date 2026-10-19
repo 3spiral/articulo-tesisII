@@ -25,8 +25,7 @@ capas ajustables y una salida binaria de un logit. La configuración fija es:
 Un piloto técnico de una época puede utilizarse únicamente para verificar
 memoria, tiempo y producción correcta de archivos. Sus pérdidas y probabilidades
 no se usan para modificar la configuración ni forman parte de los resultados del
-artículo. El piloto anterior y las ejecuciones parciales de la entrega
-provisional fueron eliminados; cualquier comprobación nueva partirá desde cero.
+artículo.
 
 ## Ejecución del piloto
 
