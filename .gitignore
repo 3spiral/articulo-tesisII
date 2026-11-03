@@ -71,11 +71,11 @@ desktop.ini
 
 
 # ============================================================
-# Visual artifacts derived from medical images
+# Visual artifacts and per-run products derived from medical images
 # ============================================================
 
 artifacts/qc/
-results/training/pilot/
+results/training/
 
 
 # ============================================================

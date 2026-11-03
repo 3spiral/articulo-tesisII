@@ -1,14 +1,15 @@
-"""Entrena EfficientNet-B0 con particiones por imagen o por paciente.
+"""Entrenamiento preespecificado del experimento corregido del artículo.
 
-Cada ejecución usa como validación un único fold y produce probabilidades
-fuera de muestra para todas sus imágenes. El script nunca modifica las
-ecografías originales ni selecciona checkpoints a partir del rendimiento de
-validación: conserva únicamente el estado de la época final fijada.
+Cada ejecución corresponde a una arquitectura, protocolo, repetición y fold.
+Las asignaciones y semillas se leen exclusivamente de los productos canónicos
+de las fases 1 y 2. El script no modifica las imágenes originales ni selecciona
+checkpoints o configuraciones a partir del rendimiento de validación.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import platform
@@ -24,39 +25,71 @@ import torchvision
 from PIL import Image
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
-from torchvision.models import EfficientNet_B0_Weights, efficientnet_b0
-
-from src.data.build_beh_image_folds import (
-    PATIENT_STRATEGY,
-    STRATEGY as IMAGE_STRATEGY,
-    load_eligible_images,
-    sha256,
+from torchvision.models import (
+    EfficientNet_B0_Weights,
+    ResNet50_Weights,
+    efficientnet_b0,
+    resnet50,
 )
+
 from src.data.preprocess_behsof import build_train_transform, build_validation_transform
-from src.settings import (
-    BEH_PATIENT_FOLDS_CSV,
-    BEHSOF_IMAGES_DIR,
-    BEHSOF_MANIFEST_CSV,
-    DATA_ROOT,
-    PROJECT_ROOT,
+from src.settings import BEHSOF_IMAGES_DIR, DATA_ROOT, PROJECT_ROOT
+
+
+ANALYTIC_COHORT_CSV = PROJECT_ROOT / "metadata" / "BEH_analytic_cohort.csv"
+IMAGE_FOLDS_CSV = PROJECT_ROOT / "metadata" / "folds" / "BEH_image_folds.csv"
+PATIENT_FOLDS_CSV = PROJECT_ROOT / "metadata" / "folds" / "BEH_patient_folds.csv"
+SEED_SCHEDULE_CSV = (
+    PROJECT_ROOT / "metadata" / "qc" / "partition_folds" / "seed_schedule.csv"
+)
+PARTITION_PARAMETERS_JSON = (
+    PROJECT_ROOT / "metadata" / "qc" / "partition_folds" / "parameters.json"
 )
 
-
-IMAGE_FOLDS_CSV = PROJECT_ROOT / "metadata" / "BEH_image_folds.csv"
 DEFAULT_RESULTS_ROOT = PROJECT_ROOT / "results" / "training"
 DEFAULT_CHECKPOINT_ROOT = DATA_ROOT / "models" / "article"
 DEFAULT_WEIGHTS_CACHE = DATA_ROOT / "models" / "torch_cache"
 
+ARCHITECTURES = ("efficientnet_b0", "resnet50")
+PROTOCOLS = ("image_level", "patient_level")
+N_REPETITIONS = 5
+N_FOLDS = 5
+EXPECTED_IMAGES = 1_371
+EXPECTED_PATIENTS = 93
+
 DEFAULT_EPOCHS = 20
 DEFAULT_BATCH_SIZE = 32
+RESNET50_PILOT_BATCH_SIZES = (32, 16, 8)
+FINAL_BATCH_SIZES = {"efficientnet_b0": 32, "resnet50": 32}
 DEFAULT_LEARNING_RATE = 1e-4
 DEFAULT_WEIGHT_DECAY = 1e-4
-DEFAULT_SEED = 42
-N_FOLDS = 5
+DEFAULT_NUM_WORKERS = 0
+
+WEIGHT_NAMES = {
+    "efficientnet_b0": "EfficientNet_B0_Weights.IMAGENET1K_V1",
+    "resnet50": "ResNet50_Weights.IMAGENET1K_V2",
+}
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for block in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def parse_boolean(series: pd.Series) -> pd.Series:
+    normalized = series.astype(str).str.strip().str.lower()
+    parsed = normalized.map({"true": True, "false": False, "1": True, "0": False})
+    if parsed.isna().any():
+        values = sorted(normalized.loc[parsed.isna()].unique())
+        raise ValueError(f"Valores booleanos no reconocidos: {values}")
+    return parsed.astype(bool)
 
 
 class BehDataset(Dataset):
-    """Dataset que resuelve rutas BEH y transforma las imágenes en memoria."""
+    """Resuelve rutas BEH y transforma las imágenes en memoria."""
 
     def __init__(
         self,
@@ -75,6 +108,8 @@ class BehDataset(Dataset):
         path = (self.image_root / relative_path).resolve()
         if not path.is_relative_to(self.image_root):
             raise ValueError(f"Ruta fuera de la raíz BEH: {relative_path}")
+        if not path.is_file():
+            raise FileNotFoundError(f"No existe la imagen BEH: {path}")
         return path
 
     def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor, str, str]:
@@ -88,31 +123,35 @@ class BehDataset(Dataset):
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Entrena EfficientNet-B0 en los folds BEH fijados."
+        description="Entrena las arquitecturas preespecificadas en los folds corregidos."
     )
     parser.add_argument(
-        "--protocol",
-        choices=("image", "patient", "both"),
-        default="both",
+        "--architecture", choices=(*ARCHITECTURES, "both"), default="both"
+    )
+    parser.add_argument("--protocol", choices=(*PROTOCOLS, "both"), default="both")
+    parser.add_argument(
+        "--repetition", choices=("1", "2", "3", "4", "5", "all"), default="all"
     )
     parser.add_argument(
-        "--fold",
-        choices=("1", "2", "3", "4", "5", "all"),
-        default="all",
+        "--fold", choices=("1", "2", "3", "4", "5", "all"), default="all"
     )
     parser.add_argument("--epochs", type=int, default=DEFAULT_EPOCHS)
-    parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
-    parser.add_argument("--learning-rate", type=float, default=DEFAULT_LEARNING_RATE)
-    parser.add_argument("--weight-decay", type=float, default=DEFAULT_WEIGHT_DECAY)
-    parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
-    parser.add_argument("--num-workers", type=int, default=0)
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=None,
+        help=(
+            "Solo permite 32 en ejecuciones finales. En un piloto de ResNet50 "
+            "admite la contingencia preespecificada 32, 16 u 8."
+        ),
+    )
     parser.add_argument("--results-root", type=Path, default=DEFAULT_RESULTS_ROOT)
     parser.add_argument("--checkpoint-root", type=Path, default=DEFAULT_CHECKPOINT_ROOT)
     parser.add_argument("--weights-cache", type=Path, default=DEFAULT_WEIGHTS_CACHE)
     parser.add_argument(
         "--pilot",
         action="store_true",
-        help="Ejecuta una época técnica y separa sus productos de los resultados finales.",
+        help="Ejecuta una sola combinación durante una época con fines técnicos.",
     )
     parser.add_argument(
         "--overwrite",
@@ -133,183 +172,271 @@ def set_reproducibility(seed: int) -> None:
     torch.use_deterministic_algorithms(True, warn_only=True)
 
 
-def _load_fold_table(protocol: str) -> pd.DataFrame:
-    if protocol == "image":
-        table = pd.read_csv(IMAGE_FOLDS_CSV, dtype={"patient_id": str})
-        required = [
-            "relative_path",
-            "patient_id",
-            "target_binary",
-            "cv_fold",
-            "cv_seed",
-            "cv_strategy",
-        ]
-        missing = sorted(set(required).difference(table.columns))
-        if missing:
-            raise ValueError("Faltan columnas en BEH_image_folds.csv: " + ", ".join(missing))
-        table = table[required].copy()
-        table["target_binary"] = pd.to_numeric(
-            table["target_binary"], errors="raise"
-        ).astype(int)
-        table["cv_fold"] = pd.to_numeric(table["cv_fold"], errors="raise").astype(int)
-        table["cv_seed"] = pd.to_numeric(table["cv_seed"], errors="raise").astype(int)
-        if not table["cv_seed"].eq(DEFAULT_SEED).all():
-            raise ValueError("BEH_image_folds.csv no utiliza exclusivamente la semilla 42.")
-        if not table["cv_strategy"].eq(IMAGE_STRATEGY).all():
-            raise ValueError("BEH_image_folds.csv declara una estrategia inesperada.")
+def load_analytic_cohort(path: Path = ANALYTIC_COHORT_CSV) -> pd.DataFrame:
+    cohort = pd.read_csv(path, dtype={"patient_id": str, "sha256": str})
+    required = {
+        "relative_path",
+        "patient_id",
+        "target_binary",
+        "sha256",
+        "analytic_include",
+    }
+    missing = sorted(required.difference(cohort.columns))
+    if missing:
+        raise ValueError("Faltan columnas en la cohorte analítica: " + ", ".join(missing))
+    cohort = cohort.loc[parse_boolean(cohort["analytic_include"])].copy()
+    cohort["relative_path"] = cohort["relative_path"].astype(str).str.replace(
+        "\\", "/", regex=False
+    )
+    cohort["patient_id"] = cohort["patient_id"].astype(str)
+    cohort["target_binary"] = pd.to_numeric(
+        cohort["target_binary"], errors="raise"
+    ).astype(int)
+    cohort["sha256"] = cohort["sha256"].astype(str)
+    cohort = cohort.sort_values("relative_path").reset_index(drop=True)
+    if len(cohort) != EXPECTED_IMAGES:
+        raise ValueError(f"La cohorte incluida no contiene {EXPECTED_IMAGES} imágenes.")
+    if cohort["patient_id"].nunique() != EXPECTED_PATIENTS:
+        raise ValueError(f"La cohorte incluida no contiene {EXPECTED_PATIENTS} pacientes.")
+    if cohort["relative_path"].duplicated().any() or cohort["sha256"].duplicated().any():
+        raise ValueError("La cohorte incluida contiene rutas o hashes duplicados.")
+    if cohort.groupby("patient_id")["target_binary"].nunique().max() != 1:
+        raise ValueError("Un paciente analítico tiene más de una clase.")
+    return cohort[["relative_path", "patient_id", "target_binary", "sha256"]]
 
-        eligible = load_eligible_images(BEHSOF_MANIFEST_CSV)[
-            ["relative_path", "patient_id", "target_binary"]
-        ]
+
+def load_seed_schedule(path: Path = SEED_SCHEDULE_CSV) -> pd.DataFrame:
+    schedule = pd.read_csv(path)
+    required = {
+        "repetition",
+        "root_seed",
+        "fold",
+        "image_partition_seed",
+        "patient_partition_seed",
+        "training_seed",
+    }
+    missing = sorted(required.difference(schedule.columns))
+    if missing:
+        raise ValueError("Faltan columnas en el calendario de semillas: " + ", ".join(missing))
+    for column in required:
+        schedule[column] = pd.to_numeric(schedule[column], errors="raise").astype(int)
+    if len(schedule) != N_REPETITIONS * N_FOLDS:
+        raise ValueError("El calendario no contiene las 25 combinaciones esperadas.")
+    if schedule[["repetition", "fold"]].duplicated().any():
+        raise ValueError("El calendario repite una combinación de repetición y fold.")
+    return schedule.sort_values(["repetition", "fold"]).reset_index(drop=True)
+
+
+def _validate_common_fold_columns(table: pd.DataFrame, protocol: str) -> pd.DataFrame:
+    required = {
+        "repetition",
+        "root_seed",
+        "partition_seed",
+        "patient_id",
+        "target_binary",
+        "cv_fold",
+        "training_seed",
+        "cv_strategy",
+    }
+    required.update(
+        {"relative_path", "sha256"}
+        if protocol == "image_level"
+        else {"image_count"}
+    )
+    missing = sorted(required.difference(table.columns))
+    if missing:
+        raise ValueError("Faltan columnas en los folds: " + ", ".join(missing))
+    for column in (
+        "repetition",
+        "root_seed",
+        "partition_seed",
+        "target_binary",
+        "cv_fold",
+        "training_seed",
+    ):
+        table[column] = pd.to_numeric(table[column], errors="raise").astype(int)
+    table["patient_id"] = table["patient_id"].astype(str)
+    if set(table["repetition"].unique()) != set(range(1, N_REPETITIONS + 1)):
+        raise ValueError("Los folds no contienen exactamente las cinco repeticiones.")
+    if set(table["cv_fold"].unique()) != set(range(1, N_FOLDS + 1)):
+        raise ValueError("Los folds no contienen exactamente los cinco folds.")
+    identity_columns = (
+        ["repetition", "relative_path"]
+        if protocol == "image_level"
+        else ["repetition", "patient_id"]
+    )
+    if table.duplicated(identity_columns).any():
+        raise ValueError("Los folds contienen asignaciones duplicadas.")
+    return table
+
+
+def load_fold_assignments(
+    protocol: str,
+    cohort: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    if protocol not in PROTOCOLS:
+        raise ValueError(f"Protocolo no reconocido: {protocol}")
+    cohort = load_analytic_cohort() if cohort is None else cohort.copy()
+    path = IMAGE_FOLDS_CSV if protocol == "image_level" else PATIENT_FOLDS_CSV
+    table = _validate_common_fold_columns(
+        pd.read_csv(path, dtype={"patient_id": str, "sha256": str}), protocol
+    )
+    expected_strategy = (
+        "StratifiedKFold_image_level_5fold"
+        if protocol == "image_level"
+        else "StratifiedKFold_patient_level_5fold"
+    )
+    if not table["cv_strategy"].eq(expected_strategy).all():
+        raise ValueError(f"Estrategia inesperada en {path.name}.")
+
+    if protocol == "image_level":
+        expected_rows = EXPECTED_IMAGES * N_REPETITIONS
+        if len(table) != expected_rows:
+            raise ValueError(f"Se esperaban {expected_rows} asignaciones por imagen.")
         checked = table.merge(
-            eligible,
+            cohort,
             on="relative_path",
             how="outer",
-            validate="one_to_one",
-            suffixes=("", "_manifest"),
+            validate="many_to_one",
+            suffixes=("", "_cohort"),
             indicator=True,
         )
         if not checked["_merge"].eq("both").all():
-            raise ValueError("Las rutas de BEH_image_folds.csv difieren del manifiesto elegible.")
-        if not checked["patient_id"].eq(checked["patient_id_manifest"]).all():
-            raise ValueError("Los pacientes de BEH_image_folds.csv difieren del manifiesto.")
-        if not checked["target_binary"].eq(checked["target_binary_manifest"]).all():
-            raise ValueError("Las etiquetas de BEH_image_folds.csv difieren del manifiesto.")
-        return table[["relative_path", "patient_id", "target_binary", "cv_fold"]]
+            raise ValueError("Los folds por imagen no cubren exactamente la cohorte.")
+        for column in ("patient_id", "target_binary", "sha256"):
+            if not checked[column].eq(checked[f"{column}_cohort"]).all():
+                raise ValueError(f"{column} difiere entre cohorte y folds por imagen.")
+        assignments = table.copy()
+    else:
+        expected_rows = EXPECTED_PATIENTS * N_REPETITIONS
+        if len(table) != expected_rows:
+            raise ValueError(f"Se esperaban {expected_rows} asignaciones por paciente.")
+        patient_truth = (
+            cohort.groupby(["patient_id", "target_binary"], as_index=False)
+            .size()
+            .rename(columns={"size": "image_count"})
+        )
+        checked = table.merge(
+            patient_truth,
+            on="patient_id",
+            how="outer",
+            validate="many_to_one",
+            suffixes=("", "_cohort"),
+            indicator=True,
+        )
+        if not checked["_merge"].eq("both").all():
+            raise ValueError("Los folds por paciente no cubren exactamente la cohorte.")
+        for column in ("target_binary", "image_count"):
+            if not checked[column].eq(checked[f"{column}_cohort"]).all():
+                raise ValueError(f"{column} difiere entre cohorte y folds por paciente.")
+        assignments = cohort.merge(
+            table,
+            on="patient_id",
+            how="inner",
+            validate="many_to_many",
+            suffixes=("", "_fold"),
+        )
+        if not assignments["target_binary"].eq(
+            assignments["target_binary_fold"]
+        ).all():
+            raise ValueError("La clase difiere al expandir folds por paciente.")
+        assignments = assignments.drop(columns=["target_binary_fold", "image_count"])
 
-    patient_folds = pd.read_csv(BEH_PATIENT_FOLDS_CSV, dtype={"patient_id": str})
-    required = ["patient_id", "target_binary", "cv_fold", "cv_seed", "cv_strategy"]
-    missing = sorted(set(required).difference(patient_folds.columns))
-    if missing:
-        raise ValueError("Faltan columnas en BEH_patient_folds.csv: " + ", ".join(missing))
-    patient_folds = patient_folds[required].copy()
-    patient_folds["target_binary"] = pd.to_numeric(
-        patient_folds["target_binary"], errors="raise"
-    ).astype(int)
-    patient_folds["cv_fold"] = pd.to_numeric(
-        patient_folds["cv_fold"], errors="raise"
-    ).astype(int)
-    patient_folds["cv_seed"] = pd.to_numeric(
-        patient_folds["cv_seed"], errors="raise"
-    ).astype(int)
-    if len(patient_folds) != 95 or patient_folds["patient_id"].nunique() != 95:
-        raise ValueError("BEH_patient_folds.csv no representa exactamente 95 pacientes.")
-    if not patient_folds["cv_seed"].eq(DEFAULT_SEED).all():
-        raise ValueError("BEH_patient_folds.csv no utiliza exclusivamente la semilla 42.")
-    if not patient_folds["cv_strategy"].eq(PATIENT_STRATEGY).all():
-        raise ValueError("BEH_patient_folds.csv declara una estrategia inesperada.")
-
-    eligible = load_eligible_images(BEHSOF_MANIFEST_CSV)
-    eligible = eligible.drop(columns=["cv_fold"])
-    table = eligible[["relative_path", "patient_id", "target_binary"]].merge(
-        patient_folds[["patient_id", "target_binary", "cv_fold"]],
-        on="patient_id",
+    schedule = load_seed_schedule()
+    seed_columns = schedule[
+        [
+            "repetition",
+            "fold",
+            "root_seed",
+            "image_partition_seed",
+            "patient_partition_seed",
+            "training_seed",
+        ]
+    ].rename(columns={"fold": "cv_fold", "root_seed": "root_seed_schedule"})
+    checked_seeds = assignments.merge(
+        seed_columns,
+        on=["repetition", "cv_fold", "training_seed"],
         how="left",
         validate="many_to_one",
-        suffixes=("", "_fold"),
     )
-    if table["cv_fold"].isna().any():
-        raise ValueError("Hay pacientes elegibles sin fold por paciente.")
-    if not table["target_binary"].eq(table["target_binary_fold"]).all():
-        raise ValueError("La clase del manifiesto difiere de BEH_patient_folds.csv.")
-    return table[["relative_path", "patient_id", "target_binary", "cv_fold"]].copy()
+    if checked_seeds["root_seed_schedule"].isna().any():
+        raise ValueError("Una asignación no coincide con el calendario de semillas.")
+    expected_partition = (
+        checked_seeds["image_partition_seed"]
+        if protocol == "image_level"
+        else checked_seeds["patient_partition_seed"]
+    )
+    if not checked_seeds["root_seed"].eq(checked_seeds["root_seed_schedule"]).all():
+        raise ValueError("La semilla raíz difiere del calendario.")
+    if not checked_seeds["partition_seed"].eq(expected_partition).all():
+        raise ValueError("La semilla de partición difiere del calendario.")
+    return assignments.sort_values(["repetition", "cv_fold", "relative_path"]).reset_index(
+        drop=True
+    )
 
 
-def build_run_frames(protocol: str, fold: int) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Devuelve entrenamiento y validación, verificando la separación prevista."""
-
-    if protocol not in {"image", "patient"}:
-        raise ValueError(f"Protocolo desconocido: {protocol}")
+def build_run_frames(
+    protocol: str,
+    repetition: int,
+    fold: int,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    if repetition not in range(1, N_REPETITIONS + 1):
+        raise ValueError(f"Repetición fuera del intervalo 1-5: {repetition}")
     if fold not in range(1, N_FOLDS + 1):
         raise ValueError(f"Fold fuera del intervalo 1-5: {fold}")
-    table = _load_fold_table(protocol)
-    table["cv_fold"] = pd.to_numeric(table["cv_fold"], errors="raise").astype(int)
-    table["target_binary"] = pd.to_numeric(
-        table["target_binary"], errors="raise"
-    ).astype(int)
-    table = table.sort_values("relative_path", kind="stable").reset_index(drop=True)
-
-    if len(table) != 1_388 or table["relative_path"].nunique() != 1_388:
-        raise ValueError("La tabla de folds no representa exactamente 1,388 imágenes únicas.")
-    if set(table["cv_fold"].unique()) != set(range(1, N_FOLDS + 1)):
-        raise ValueError("La tabla no contiene exactamente los folds 1-5.")
-
-    validation = table.loc[table["cv_fold"].eq(fold)].copy()
-    training = table.loc[~table["cv_fold"].eq(fold)].copy()
+    table = load_fold_assignments(protocol)
+    repetition_rows = table.loc[table["repetition"].eq(repetition)].copy()
+    if len(repetition_rows) != EXPECTED_IMAGES:
+        raise ValueError("La repetición no contiene exactamente la cohorte analítica.")
+    if repetition_rows["relative_path"].nunique() != EXPECTED_IMAGES:
+        raise ValueError("La repetición contiene rutas repetidas u omitidas.")
+    validation = repetition_rows.loc[repetition_rows["cv_fold"].eq(fold)].copy()
+    training = repetition_rows.loc[~repetition_rows["cv_fold"].eq(fold)].copy()
     if set(training["relative_path"]).intersection(validation["relative_path"]):
-        raise ValueError("Una imagen aparece simultáneamente en entrenamiento y validación.")
-
+        raise ValueError("Entrenamiento y validación comparten rutas.")
+    if set(training["sha256"]).intersection(validation["sha256"]):
+        raise ValueError("Entrenamiento y validación comparten hashes exactos.")
     patient_overlap = set(training["patient_id"]).intersection(validation["patient_id"])
-    if protocol == "patient" and patient_overlap:
-        raise ValueError("La partición por paciente presenta solapamiento de pacientes.")
-    if protocol == "image" and not patient_overlap:
+    if protocol == "patient_level" and patient_overlap:
+        raise ValueError("La partición por paciente comparte identidades.")
+    if protocol == "image_level" and not patient_overlap:
         raise ValueError("La partición por imagen no presenta el solapamiento esperado.")
-    return training, validation
-
-
-def validate_image_sources(image_root: Path = BEHSOF_IMAGES_DIR) -> None:
-    """Comprueba que toda la muestra elegible exista sin abrir ni modificar imágenes."""
-
-    resolved_root = image_root.resolve()
-    eligible = load_eligible_images(BEHSOF_MANIFEST_CSV)
-    missing: list[str] = []
-    for relative_path in eligible["relative_path"]:
-        path = (resolved_root / str(relative_path)).resolve()
-        if not path.is_relative_to(resolved_root):
-            raise ValueError(f"Ruta fuera de la raíz BEH: {relative_path}")
-        if not path.is_file():
-            missing.append(str(relative_path))
-    if missing:
-        preview = ", ".join(missing[:5])
-        raise FileNotFoundError(
-            f"Faltan {len(missing)} imágenes elegibles. Primeras rutas: {preview}"
-        )
+    return training.reset_index(drop=True), validation.reset_index(drop=True)
 
 
 def validate_run_configuration(
-    *,
-    epochs: int,
-    batch_size: int,
-    learning_rate: float,
-    weight_decay: float,
-    seed: int,
-    pilot: bool,
+    *, architecture: str, epochs: int, batch_size: int, pilot: bool
 ) -> None:
-    """Impide que una ejecución formal se aparte de la configuración registrada."""
-
+    if architecture not in ARCHITECTURES:
+        raise ValueError(f"Arquitectura no reconocida: {architecture}")
     expected_epochs = 1 if pilot else DEFAULT_EPOCHS
-    observed = {
-        "epochs": epochs,
-        "batch_size": batch_size,
-        "learning_rate": learning_rate,
-        "weight_decay": weight_decay,
-        "seed": seed,
-    }
-    expected = {
-        "epochs": expected_epochs,
-        "batch_size": DEFAULT_BATCH_SIZE,
-        "learning_rate": DEFAULT_LEARNING_RATE,
-        "weight_decay": DEFAULT_WEIGHT_DECAY,
-        "seed": DEFAULT_SEED,
-    }
-    mismatches = [
-        f"{key}={observed[key]!r} (esperado {expected[key]!r})"
-        for key in expected
-        if observed[key] != expected[key]
-    ]
-    if mismatches:
-        category = "piloto" if pilot else "experimento final"
+    if epochs != expected_epochs:
         raise ValueError(
-            f"La configuración del {category} difiere del protocolo fijado: "
-            + "; ".join(mismatches)
+            f"epochs={epochs} difiere del valor preespecificado {expected_epochs}."
+        )
+    if pilot and architecture == "resnet50":
+        if batch_size not in RESNET50_PILOT_BATCH_SIZES:
+            raise ValueError("El piloto ResNet50 solo admite lotes 32, 16 u 8.")
+    elif batch_size != FINAL_BATCH_SIZES[architecture]:
+        raise ValueError(
+            f"batch_size={batch_size} difiere del valor preespecificado "
+            f"{FINAL_BATCH_SIZES[architecture]}."
         )
 
 
-def build_model(pretrained: bool = True) -> nn.Module:
-    weights = EfficientNet_B0_Weights.IMAGENET1K_V1 if pretrained else None
-    model = efficientnet_b0(weights=weights)
-    in_features = model.classifier[1].in_features
-    model.classifier[1] = nn.Linear(in_features, 1)
+def build_model(architecture: str, pretrained: bool = True) -> nn.Module:
+    if architecture == "efficientnet_b0":
+        weights = EfficientNet_B0_Weights.IMAGENET1K_V1 if pretrained else None
+        model = efficientnet_b0(weights=weights)
+        model.classifier[1] = nn.Linear(model.classifier[1].in_features, 1)
+    elif architecture == "resnet50":
+        weights = ResNet50_Weights.IMAGENET1K_V2 if pretrained else None
+        model = resnet50(weights=weights)
+        model.fc = nn.Linear(model.fc.in_features, 1)
+    else:
+        raise ValueError(f"Arquitectura no reconocida: {architecture}")
+    if not all(parameter.requires_grad for parameter in model.parameters()):
+        raise RuntimeError("Todas las capas deben permanecer ajustables.")
     return model
 
 
@@ -317,7 +444,6 @@ def make_loaders(
     training: pd.DataFrame,
     validation: pd.DataFrame,
     batch_size: int,
-    num_workers: int,
     seed: int,
 ) -> tuple[DataLoader, DataLoader]:
     generator = torch.Generator().manual_seed(seed)
@@ -327,14 +453,11 @@ def make_loaders(
     )
     common = {
         "batch_size": batch_size,
-        "num_workers": num_workers,
+        "num_workers": DEFAULT_NUM_WORKERS,
         "pin_memory": torch.cuda.is_available(),
     }
     training_loader = DataLoader(
-        training_dataset,
-        shuffle=True,
-        generator=generator,
-        **common,
+        training_dataset, shuffle=True, generator=generator, **common
     )
     validation_loader = DataLoader(validation_dataset, shuffle=False, **common)
     return training_loader, validation_loader
@@ -348,8 +471,8 @@ def train_epoch(
     device: torch.device,
 ) -> float:
     model.train()
-    loss_sum = 0.0
-    sample_count = 0
+    total_loss = 0.0
+    total_items = 0
     for images, labels, _, _ in loader:
         images = images.to(device, non_blocking=True)
         labels = labels.to(device, non_blocking=True)
@@ -358,12 +481,13 @@ def train_epoch(
         loss = criterion(logits, labels)
         loss.backward()
         optimizer.step()
-        loss_sum += float(loss.detach()) * labels.size(0)
-        sample_count += labels.size(0)
-    return loss_sum / sample_count
+        total_loss += float(loss.detach().item()) * len(labels)
+        total_items += len(labels)
+    if total_items == 0:
+        raise RuntimeError("El conjunto de entrenamiento está vacío.")
+    return total_loss / total_items
 
 
-@torch.inference_mode()
 def validate(
     model: nn.Module,
     loader: DataLoader,
@@ -371,33 +495,32 @@ def validate(
     device: torch.device,
 ) -> tuple[float, pd.DataFrame]:
     model.eval()
-    loss_sum = 0.0
-    sample_count = 0
-    rows: list[dict[str, str | int | float]] = []
-    for images, labels, relative_paths, patient_ids in loader:
-        images = images.to(device, non_blocking=True)
-        labels_device = labels.to(device, non_blocking=True)
-        logits = model(images).squeeze(1)
-        loss = criterion(logits, labels_device)
-        probabilities = torch.sigmoid(logits).cpu().tolist()
-        loss_sum += float(loss) * labels.size(0)
-        sample_count += labels.size(0)
-        for relative_path, patient_id, target, probability in zip(
-            relative_paths,
-            patient_ids,
-            labels.tolist(),
-            probabilities,
-            strict=True,
-        ):
-            rows.append(
-                {
-                    "relative_path": relative_path,
-                    "patient_id": patient_id,
-                    "target_binary": int(target),
-                    "probability": float(probability),
-                }
-            )
-    return loss_sum / sample_count, pd.DataFrame(rows)
+    total_loss = 0.0
+    total_items = 0
+    rows: list[dict[str, object]] = []
+    with torch.inference_mode():
+        for images, labels, paths, patients in loader:
+            images = images.to(device, non_blocking=True)
+            labels_device = labels.to(device, non_blocking=True)
+            logits = model(images).squeeze(1)
+            loss = criterion(logits, labels_device)
+            probabilities = torch.sigmoid(logits).cpu().numpy()
+            total_loss += float(loss.item()) * len(labels)
+            total_items += len(labels)
+            for path, patient, target, probability in zip(
+                paths, patients, labels.numpy(), probabilities, strict=True
+            ):
+                rows.append(
+                    {
+                        "relative_path": str(path),
+                        "patient_id": str(patient),
+                        "target_binary": int(target),
+                        "probability": float(probability),
+                    }
+                )
+    if total_items == 0:
+        raise RuntimeError("El conjunto de validación está vacío.")
+    return total_loss / total_items, pd.DataFrame(rows)
 
 
 def _ensure_new_outputs(paths: list[Path], overwrite: bool) -> None:
@@ -405,20 +528,26 @@ def _ensure_new_outputs(paths: list[Path], overwrite: bool) -> None:
     if existing and not overwrite:
         formatted = "\n".join(f"- {path}" for path in existing)
         raise FileExistsError(
-            "Ya existen productos para esta ejecución. Revise o use --overwrite:\n"
-            + formatted
+            "Ya existen productos de esta ejecución. Use --overwrite solo "
+            f"después de revisarlos:\n{formatted}"
         )
 
 
+def _relative_or_absolute(path: Path, base: Path) -> str:
+    try:
+        return path.resolve().relative_to(base.resolve()).as_posix()
+    except ValueError:
+        return str(path.resolve())
+
+
 def run_training(
+    *,
+    architecture: str,
     protocol: str,
+    repetition: int,
     fold: int,
     epochs: int,
     batch_size: int,
-    learning_rate: float,
-    weight_decay: float,
-    seed: int,
-    num_workers: int,
     results_root: Path,
     checkpoint_root: Path,
     weights_cache: Path,
@@ -426,15 +555,20 @@ def run_training(
     overwrite: bool,
 ) -> dict[str, object]:
     validate_run_configuration(
+        architecture=architecture,
         epochs=epochs,
         batch_size=batch_size,
-        learning_rate=learning_rate,
-        weight_decay=weight_decay,
-        seed=seed,
         pilot=pilot,
     )
-    set_reproducibility(seed)
-    training, validation = build_run_frames(protocol, fold)
+    training, validation = build_run_frames(protocol, repetition, fold)
+    identity = validation[["root_seed", "training_seed", "partition_seed"]].drop_duplicates()
+    if len(identity) != 1:
+        raise RuntimeError("El fold no posee una identidad de semillas única.")
+    root_seed = int(identity.iloc[0]["root_seed"])
+    training_seed = int(identity.iloc[0]["training_seed"])
+    partition_seed = int(identity.iloc[0]["partition_seed"])
+    set_reproducibility(training_seed)
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     weights_cache = weights_cache.resolve()
     weights_cache.mkdir(parents=True, exist_ok=True)
@@ -443,8 +577,21 @@ def run_training(
         torch.cuda.reset_peak_memory_stats(device)
 
     category = "pilot" if pilot else "final"
-    run_dir = results_root.resolve() / category / protocol / f"fold_{fold}"
-    checkpoint_dir = checkpoint_root.resolve() / category / protocol
+    run_dir = (
+        results_root.resolve()
+        / category
+        / architecture
+        / protocol
+        / f"repetition_{repetition}"
+        / f"fold_{fold}"
+    )
+    checkpoint_dir = (
+        checkpoint_root.resolve()
+        / category
+        / architecture
+        / protocol
+        / f"repetition_{repetition}"
+    )
     history_path = run_dir / "history.csv"
     predictions_path = run_dir / "predictions.csv"
     metadata_path = run_dir / "run_metadata.json"
@@ -454,15 +601,17 @@ def run_training(
     )
 
     training_loader, validation_loader = make_loaders(
-        training, validation, batch_size, num_workers, seed
+        training, validation, batch_size, training_seed
     )
-    model = build_model(pretrained=True).to(device)
+    model = build_model(architecture, pretrained=True).to(device)
     criterion = nn.BCEWithLogitsLoss()
     optimizer = torch.optim.AdamW(
-        model.parameters(), lr=learning_rate, weight_decay=weight_decay
+        model.parameters(),
+        lr=DEFAULT_LEARNING_RATE,
+        weight_decay=DEFAULT_WEIGHT_DECAY,
     )
 
-    history: list[dict[str, int | float | str]] = []
+    history: list[dict[str, object]] = []
     predictions = pd.DataFrame()
     run_start = time.perf_counter()
     for epoch in range(1, epochs + 1):
@@ -474,9 +623,12 @@ def run_training(
         elapsed = time.perf_counter() - epoch_start
         history.append(
             {
+                "architecture": architecture,
                 "protocol": protocol,
+                "repetition": repetition,
                 "fold": fold,
-                "seed": seed,
+                "root_seed": root_seed,
+                "training_seed": training_seed,
                 "epoch": epoch,
                 "train_loss": train_loss,
                 "validation_loss": validation_loss,
@@ -484,7 +636,8 @@ def run_training(
             }
         )
         print(
-            f"{protocol} fold {fold} | epoch {epoch}/{epochs} | "
+            f"{architecture} | {protocol} | repetition {repetition} | "
+            f"fold {fold} | epoch {epoch}/{epochs} | "
             f"train_loss={train_loss:.6f} | val_loss={validation_loss:.6f} | "
             f"{elapsed:.1f} s",
             flush=True,
@@ -496,14 +649,31 @@ def run_training(
     if predictions["relative_path"].duplicated().any():
         raise RuntimeError("La validación produjo rutas duplicadas.")
     if set(predictions["relative_path"]) != set(validation["relative_path"]):
-        raise RuntimeError("Las predicciones no corresponden exactamente al fold validado.")
+        raise RuntimeError("Las predicciones no corresponden exactamente al fold.")
     if not np.isfinite(predictions["probability"]).all():
         raise RuntimeError("La validación produjo probabilidades no finitas.")
     if not predictions["probability"].between(0.0, 1.0).all():
         raise RuntimeError("La validación produjo probabilidades fuera de [0, 1].")
-    predictions.insert(0, "seed", seed)
-    predictions.insert(0, "fold", fold)
-    predictions.insert(0, "protocol", protocol)
+    predictions = predictions.merge(
+        validation[["relative_path", "sha256"]],
+        on="relative_path",
+        how="left",
+        validate="one_to_one",
+    )
+    if predictions["sha256"].isna().any():
+        raise RuntimeError("No se pudo vincular el hash de una predicción.")
+
+    for position, (column, value) in enumerate(
+        (
+            ("architecture", architecture),
+            ("protocol", protocol),
+            ("repetition", repetition),
+            ("fold", fold),
+            ("root_seed", root_seed),
+            ("training_seed", training_seed),
+        )
+    ):
+        predictions.insert(position, column, value)
 
     run_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -512,50 +682,68 @@ def run_training(
     torch.save(
         {
             "model_state_dict": model.state_dict(),
+            "architecture": architecture,
             "protocol": protocol,
+            "repetition": repetition,
             "fold": fold,
             "epoch": epochs,
-            "seed": seed,
+            "root_seed": root_seed,
+            "training_seed": training_seed,
         },
         checkpoint_path,
     )
 
-    fold_source = IMAGE_FOLDS_CSV if protocol == "image" else BEH_PATIENT_FOLDS_CSV
-    try:
-        weights_cache_record = weights_cache.relative_to(DATA_ROOT).as_posix()
-    except ValueError:
-        weights_cache_record = str(weights_cache)
+    fold_source = IMAGE_FOLDS_CSV if protocol == "image_level" else PATIENT_FOLDS_CSV
     metadata: dict[str, object] = {
         "run_status": "complete",
+        "architecture": architecture,
         "protocol": protocol,
+        "repetition": repetition,
         "fold": fold,
         "pilot": pilot,
         "epochs": epochs,
         "batch_size": batch_size,
-        "learning_rate": learning_rate,
-        "weight_decay": weight_decay,
+        "learning_rate": DEFAULT_LEARNING_RATE,
+        "weight_decay": DEFAULT_WEIGHT_DECAY,
         "optimizer": "AdamW",
         "loss": "BCEWithLogitsLoss_unweighted",
-        "architecture": "EfficientNet-B0",
-        "pretrained_weights": "EfficientNet_B0_Weights.IMAGENET1K_V1",
+        "pretrained_weights": WEIGHT_NAMES[architecture],
+        "all_layers_trainable": True,
+        "precision": "float32",
+        "mixed_precision": False,
+        "gradient_accumulation_steps": 1,
+        "scheduler": None,
+        "early_stopping": False,
         "checkpoint_selection": "fixed_final_epoch",
-        "seed": seed,
-        "num_workers": num_workers,
+        "root_seed": root_seed,
+        "partition_seed": partition_seed,
+        "training_seed": training_seed,
+        "num_workers": DEFAULT_NUM_WORKERS,
         "device": str(device),
         "gpu": torch.cuda.get_device_name(0) if device.type == "cuda" else None,
-        "manifest_sha256": sha256(BEHSOF_MANIFEST_CSV),
+        "python_version": platform.python_version(),
+        "torch_version": torch.__version__,
+        "torchvision_version": torchvision.__version__,
+        "analytic_cohort": ANALYTIC_COHORT_CSV.relative_to(PROJECT_ROOT).as_posix(),
+        "analytic_cohort_sha256": sha256(ANALYTIC_COHORT_CSV),
         "fold_source": fold_source.relative_to(PROJECT_ROOT).as_posix(),
         "fold_source_sha256": sha256(fold_source),
-        "weights_cache": weights_cache_record,
+        "seed_schedule": SEED_SCHEDULE_CSV.relative_to(PROJECT_ROOT).as_posix(),
+        "seed_schedule_sha256": sha256(SEED_SCHEDULE_CSV),
+        "partition_parameters": PARTITION_PARAMETERS_JSON.relative_to(
+            PROJECT_ROOT
+        ).as_posix(),
+        "partition_parameters_sha256": sha256(PARTITION_PARAMETERS_JSON),
+        "weights_cache": _relative_or_absolute(weights_cache, DATA_ROOT),
+        "checkpoint": _relative_or_absolute(checkpoint_path, DATA_ROOT),
+        "checkpoint_sha256": sha256(checkpoint_path),
+        "history_sha256": sha256(history_path),
+        "predictions_sha256": sha256(predictions_path),
         "peak_gpu_memory_allocated_bytes": (
-            int(torch.cuda.max_memory_allocated(device))
-            if device.type == "cuda"
-            else None
+            int(torch.cuda.max_memory_allocated(device)) if device.type == "cuda" else None
         ),
         "peak_gpu_memory_reserved_bytes": (
-            int(torch.cuda.max_memory_reserved(device))
-            if device.type == "cuda"
-            else None
+            int(torch.cuda.max_memory_reserved(device)) if device.type == "cuda" else None
         ),
         "training_images": len(training),
         "validation_images": len(validation),
@@ -564,12 +752,7 @@ def run_training(
         "overlapping_patients": len(
             set(training["patient_id"]).intersection(validation["patient_id"])
         ),
-        "elapsed_seconds": total_seconds,
-        "python_version": platform.python_version(),
-        "torch_version": torch.__version__,
-        "torchvision_version": torchvision.__version__,
-        "numpy_version": np.__version__,
-        "pandas_version": pd.__version__,
+        "total_seconds": total_seconds,
     }
     metadata_path.write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
@@ -579,38 +762,53 @@ def run_training(
     return metadata
 
 
+def _selected(value: str, options: tuple[str, ...]) -> tuple[str, ...]:
+    return options if value in {"all", "both"} else (value,)
+
+
 def main() -> None:
     args = parse_args()
-    if args.epochs < 1 or args.batch_size < 1 or args.num_workers < 0:
-        raise ValueError("epochs y batch-size deben ser positivos; num-workers no puede ser negativo.")
-    validate_run_configuration(
-        epochs=args.epochs,
-        batch_size=args.batch_size,
-        learning_rate=args.learning_rate,
-        weight_decay=args.weight_decay,
-        seed=args.seed,
-        pilot=args.pilot,
+    architectures = _selected(args.architecture, ARCHITECTURES)
+    protocols = _selected(args.protocol, PROTOCOLS)
+    repetitions = (
+        tuple(range(1, N_REPETITIONS + 1))
+        if args.repetition == "all"
+        else (int(args.repetition),)
     )
-    validate_image_sources()
-    protocols = ("image", "patient") if args.protocol == "both" else (args.protocol,)
-    folds = range(1, N_FOLDS + 1) if args.fold == "all" else (int(args.fold),)
-    for protocol in protocols:
-        for fold in folds:
-            run_training(
-                protocol=protocol,
-                fold=fold,
-                epochs=args.epochs,
-                batch_size=args.batch_size,
-                learning_rate=args.learning_rate,
-                weight_decay=args.weight_decay,
-                seed=args.seed,
-                num_workers=args.num_workers,
-                results_root=args.results_root,
-                checkpoint_root=args.checkpoint_root,
-                weights_cache=args.weights_cache,
-                pilot=args.pilot,
-                overwrite=args.overwrite,
-            )
+    folds = (
+        tuple(range(1, N_FOLDS + 1))
+        if args.fold == "all"
+        else (int(args.fold),)
+    )
+    if args.pilot and any(
+        len(values) != 1 for values in (architectures, protocols, repetitions, folds)
+    ):
+        raise ValueError(
+            "Un piloto debe identificar exactamente una arquitectura, protocolo, "
+            "repetición y fold."
+        )
+    for architecture in architectures:
+        batch_size = (
+            FINAL_BATCH_SIZES[architecture]
+            if args.batch_size is None
+            else args.batch_size
+        )
+        for protocol in protocols:
+            for repetition in repetitions:
+                for fold in folds:
+                    run_training(
+                        architecture=architecture,
+                        protocol=protocol,
+                        repetition=repetition,
+                        fold=fold,
+                        epochs=args.epochs,
+                        batch_size=batch_size,
+                        results_root=args.results_root,
+                        checkpoint_root=args.checkpoint_root,
+                        weights_cache=args.weights_cache,
+                        pilot=args.pilot,
+                        overwrite=args.overwrite,
+                    )
 
 
 if __name__ == "__main__":
