@@ -1,0 +1,56 @@
+{
+  "analytic_cohort": "metadata/BEH_analytic_cohort.csv",
+  "analytic_cohort_sha256": "34a3912b12bb500d37b58231e2a3fbf8db93b40d1bc38fa6f00ac9eeff6e173f",
+  "root_seeds": [
+    42,
+    43,
+    44,
+    45,
+    46
+  ],
+  "repetitions": 5,
+  "folds_per_repetition": 5,
+  "seed_derivation": {
+    "implementation": "numpy.random.SeedSequence",
+    "root_spawn_domains": [
+      "image_partition",
+      "patient_partition",
+      "training"
+    ],
+    "training_children": "one per fold; reused across protocols and architectures"
+  },
+  "strategies": {
+    "image_level": "StratifiedKFold_image_level_5fold",
+    "patient_level": "StratifiedKFold_patient_level_5fold"
+  },
+  "cohort": {
+    "images": 1371,
+    "patients": 93,
+    "class_images": {
+      "0": 420,
+      "1": 951
+    },
+    "class_patients": {
+      "0": 29,
+      "1": 64
+    }
+  },
+  "audit_contract": {
+    "patient_protocol_identifier_overlap": 0,
+    "patient_protocol_sister_exposure": 0,
+    "all_protocols_hash_overlap": 0,
+    "artificial_overlap_levels": false
+  },
+  "versions": {
+    "numpy": "2.5.3",
+    "pandas": "3.0.6",
+    "scikit_learn": "1.9.1"
+  },
+  "outputs": {
+    "metadata/folds/BEH_image_folds.csv": "f694f152a2d1a681455a628f17d574f0000ad045415f694eb877ef18015dad2f",
+    "metadata/folds/BEH_patient_folds.csv": "55026d8082d0553f914eb57879261696e1fed94d4081edb341216d57f3e24f01",
+    "metadata/qc/partition_folds/seed_schedule.csv": "2877a4440ec029142ff2612ad05baec45afeaca56d2713491765f079681d3cdc",
+    "metadata/qc/partition_folds/image_exposure.csv": "d152c58defb29193ceb960c5d5b19b1687c9c31f60728a41742e09004fe69dee",
+    "metadata/qc/partition_folds/fold_summary.csv": "c0b61d6fda124465c869302164ab58ee1a112630cb5a499f0df2a2a012620628"
+  }
+}

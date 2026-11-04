@@ -19,7 +19,9 @@ outputs:
   beh_outliers_review_csv: "metadata/qc/BEH_outliers_review.csv"
 
   manifest_csv: "metadata/BEHSOF_manifest.csv"
-  patient_folds_csv: "metadata/BEH_patient_folds.csv"
+  analytic_cohort_csv: "metadata/BEH_analytic_cohort.csv"
+  image_folds_csv: "metadata/folds/BEH_image_folds.csv"
+  patient_folds_csv: "metadata/folds/BEH_patient_folds.csv"
 
   tal_contact_sheets_dir: "artifacts/qc/TAL_contact_sheets"
   beh_sample_contact_sheets_dir: "artifacts/qc/BEH_sample_contact_sheets"

@@ -1,0 +1,192 @@
+{
+  "source_manifest": "metadata/BEHSOF_manifest.csv",
+  "source_manifest_sha256": "e10b9bff8eabb8c8ea25c46c60ff1ccdade32e526190bec1f5ce5affcd158f10",
+  "hash_algorithm": "SHA-256",
+  "source_filters": {
+    "center": "BEH",
+    "include_final": true,
+    "patient_eligible": true
+  },
+  "selection_rule": "Exclude every identity involved in an exact cross-patient duplicate; for exact duplicates within one patient, retain the first path in natural order.",
+  "flow": {
+    "source_images": 1388,
+    "excluded_images": 17,
+    "analytic_images": 1371,
+    "source_patients": 95,
+    "excluded_patients": 2,
+    "analytic_patients": 93
+  },
+  "source_class_counts": {
+    "images": {
+      "0": 421,
+      "1": 967
+    },
+    "patients": {
+      "0": 29,
+      "1": 66
+    }
+  },
+  "analytic_class_counts": {
+    "images": {
+      "0": 420,
+      "1": 951
+    },
+    "patients": {
+      "0": 29,
+      "1": 64
+    }
+  },
+  "exclusion_reason_counts": {
+    "cross_patient_exact_duplicate_identity_ambiguous": 16,
+    "within_patient_exact_duplicate_redundant": 1
+  },
+  "duplicate_groups": [
+    {
+      "sha256": "0640e51905b2e78bc1576f29708080e601a76955f1f0f5ba8c1b65fd66731d55",
+      "scope": "cross_patient",
+      "patients": [
+        "BEH42231",
+        "BEH43131"
+      ],
+      "paths": [
+        "BEH42231/Image.jpg",
+        "BEH43131/Image.jpg"
+      ]
+    },
+    {
+      "sha256": "06945a83edf6b8c956d2792dfc11863f46309fc8bf63e1b80399630b6a5811fb",
+      "scope": "cross_patient",
+      "patients": [
+        "BEH42231",
+        "BEH43131"
+      ],
+      "paths": [
+        "BEH42231/Image4.jpg",
+        "BEH43131/Image4.jpg"
+      ]
+    },
+    {
+      "sha256": "82648ea68daa3d49c8627f9eafd5c68f01993ecea7b2cad3dec3511c8d65e9e6",
+      "scope": "cross_patient",
+      "patients": [
+        "BEH42231",
+        "BEH43131"
+      ],
+      "paths": [
+        "BEH42231/Image1.jpg",
+        "BEH43131/Image1.jpg"
+      ]
+    },
+    {
+      "sha256": "88e6c75f68a0da349583b0a2d4ef7a0b0517b0beeffaff8b4c44a22fdde8e985",
+      "scope": "cross_patient",
+      "patients": [
+        "BEH42231",
+        "BEH43131"
+      ],
+      "paths": [
+        "BEH42231/Image7.jpg",
+        "BEH43131/Image7.jpg"
+      ]
+    },
+    {
+      "sha256": "aea5c11c2957614df4e8d34982dfb6a2051d3d3738591be3a27363fdb5cafea1",
+      "scope": "cross_patient",
+      "patients": [
+        "BEH42231",
+        "BEH43131"
+      ],
+      "paths": [
+        "BEH42231/Image2.jpg",
+        "BEH43131/Image2.jpg"
+      ]
+    },
+    {
+      "sha256": "b3d7a89881140ee72addaa801499eec1872d3e3236aebbc1d6599cbbee176d39",
+      "scope": "cross_patient",
+      "patients": [
+        "BEH42231",
+        "BEH43131"
+      ],
+      "paths": [
+        "BEH42231/Image6.jpg",
+        "BEH43131/Image6.jpg"
+      ]
+    },
+    {
+      "sha256": "b766303a969e2a8d429745537b155fb4ef4c35ced5b1b888c79b0a92da88b2fe",
+      "scope": "within_patient",
+      "patients": [
+        "BEH62101"
+      ],
+      "paths": [
+        "BEH62101/Image9.jpg",
+        "BEH62101/Image10.jpg"
+      ]
+    },
+    {
+      "sha256": "db7a2b649b2eaa24e290adf3a6af9884388e04d1e13f070ba5953d3fe257dd7a",
+      "scope": "cross_patient",
+      "patients": [
+        "BEH42231",
+        "BEH43131"
+      ],
+      "paths": [
+        "BEH42231/Image5.jpg",
+        "BEH43131/Image5.jpg"
+      ]
+    },
+    {
+      "sha256": "f677eefb4d9c35a4dff814d7ac10e422b67104bb22c9109185768f759b2ad809",
+      "scope": "cross_patient",
+      "patients": [
+        "BEH42231",
+        "BEH43131"
+      ],
+      "paths": [
+        "BEH42231/Image3.jpg",
+        "BEH43131/Image3.jpg"
+      ]
+    }
+  ],
+  "images_per_patient": {
+    "overall": {
+      "patients": 93,
+      "images": 1371,
+      "mean": 14.741935483870968,
+      "median": 15.0,
+      "q1": 13.0,
+      "q3": 17.0,
+      "minimum": 7,
+      "maximum": 24
+    },
+    "class_0": {
+      "patients": 29,
+      "images": 420,
+      "mean": 14.482758620689655,
+      "median": 15.0,
+      "q1": 13.0,
+      "q3": 16.0,
+      "minimum": 7,
+      "maximum": 23
+    },
+    "class_1": {
+      "patients": 64,
+      "images": 951,
+      "mean": 14.859375,
+      "median": 15.0,
+      "q1": 13.0,
+      "q3": 17.0,
+      "minimum": 8,
+      "maximum": 24
+    }
+  },
+  "outputs": {
+    "analytic_cohort": "metadata/BEH_analytic_cohort.csv",
+    "analytic_cohort_sha256": "34a3912b12bb500d37b58231e2a3fbf8db93b40d1bc38fa6f00ac9eeff6e173f",
+    "exclusions": "metadata/qc/cohort_integrity/exclusions.csv",
+    "exclusions_sha256": "17ae9d3a54f14688e99f1676849a5b256145ebb12fb32f227992ede0ecd222ce",
+    "patient_image_distribution": "metadata/qc/cohort_integrity/patient_image_distribution.csv",
+    "patient_image_distribution_sha256": "09c70dfe68aa9463799675d372d41a21e7cf870c8515362dcbb72a0aa6c72ad8"
+  }
+}

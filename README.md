@@ -19,14 +19,22 @@ Evaluar el efecto de la partición por imagen, en comparación con la partición
 ## Diseño resumido
 
 - **Datos principales:** subconjunto BEH de BEHSOF.
-- **Muestra elegible:** 95 pacientes y 1,388 imágenes incluidas.
+- **Cohorte analítica:** 93 pacientes y 1,371 imágenes únicas, derivadas de
+  una selección fuente de 95 pacientes y 1,388 imágenes elegibles.
 - **Variable objetivo:** `Fibroscan S`, agrupada como `S0-S1 = 0` y `S2-S3 = 1`.
-- **Arquitectura controlada:** EfficientNet-B0 con transferencia de aprendizaje.
-- **Protocolos comparados:** validación cruzada de cinco folds por imagen y por paciente.
-- **Control experimental:** mismos datos, preprocesamiento, aumentos, arquitectura, hiperparámetros y semillas en ambos protocolos.
+- **Arquitecturas:** EfficientNet-B0 como análisis principal y ResNet50 como
+  comprobación de robustez, ambas mediante transferencia de aprendizaje y sin
+  seleccionar una arquitectura ganadora.
+- **Protocolos comparados:** cinco repeticiones de validación cruzada de cinco
+  folds por imagen y por paciente.
+- **Control experimental:** dentro de cada arquitectura se mantienen los mismos
+  datos, preprocesamiento, aumentos, hiperparámetros y semillas emparejadas en
+  ambos protocolos.
 - **Unidad de evaluación:** paciente; las probabilidades fuera de muestra de sus imágenes se promedian antes de calcular las métricas.
 - **Métrica principal:** AUROC a nivel paciente.
-- **Comparación principal:** `ΔAUROC = AUROC por imagen - AUROC por paciente`.
+- **Comparación principal:** media de las cinco diferencias emparejadas
+  `ΔAUROC = AUROC por imagen - AUROC por paciente` obtenidas con
+  EfficientNet-B0; ResNet50 se informa separadamente como robustez.
 - **Incertidumbre:** intervalo de confianza del 95 % mediante bootstrap pareado y estratificado a nivel paciente con 10,000 remuestreos.
 - **Métricas secundarias:** balanced accuracy, sensibilidad, especificidad y matriz de confusión con umbral fijo de `0.5`.
 
@@ -40,29 +48,50 @@ Algunos scripts y metadatos de TAL o Byra se conservan porque proceden de la cop
 
 ## Estado actual
 
-Completado:
+El proyecto se encuentra después de la construcción de la cohorte analítica,
+las particiones experimentales y los pilotos exclusivamente técnicos, pero
+antes de la congelación versionada y de los entrenamientos predictivos
+definitivos. Por tanto, este repositorio todavía no contiene resultados de
+rendimiento vigentes que deban interpretarse como hallazgos del artículo.
 
-- inventario y auditoría técnica de BEHSOF;
-- revisión visual de los casos seleccionados durante el control de calidad;
-- manifiesto maestro con trazabilidad de inclusiones y exclusiones;
-- definición de la variable objetivo binaria;
-- folds reproducibles por paciente;
-- selección del modelo controlado y del plan de evaluación;
-- auditoría visual y confirmación de la limpieza global de la interfaz BEH;
-- definición del tamaño de entrada, canales, normalización y aumentos;
-- implementación, pruebas y auditoría visual del pipeline de entrada, con 40 de
-  40 imágenes aprobadas.
-- generación reproducible y auditoría de los folds por imagen.
-- implementación y pruebas automatizadas del entrenamiento, la exportación de
-  probabilidades fuera de muestra y la evaluación comparativa.
+### Componentes completados y vigentes
 
-Pendiente:
+- inventario, control de calidad técnico y revisión visual del subconjunto BEH;
+- manifiesto maestro con trazabilidad de inclusiones y exclusiones previas;
+- definición de la variable objetivo binaria S0–S1 frente a S2–S3;
+- preprocesamiento en memoria, tamaño de entrada, canales, normalización y
+  aumentos, incluida una auditoría visual aprobada en 40 de 40 imágenes;
+- cohorte analítica corregida y auditada: 1,371 imágenes únicas de 93
+  pacientes, derivadas de 1,388 imágenes fuente mediante 17 exclusiones
+  trazables por duplicación exacta de contenido;
+- cinco repeticiones reproducibles de validación cruzada de cinco folds bajo
+  los protocolos por imagen y por paciente;
+- auditoría de cobertura, exclusividad, semillas, solapamiento de pacientes,
+  exposición a imágenes hermanas y coincidencias de hashes;
+- implementación y pruebas automatizadas del entrenador vigente para
+  EfficientNet-B0 y ResNet50; y
+- implementación y pruebas sintéticas del evaluador preespecificado; y
+- cuatro pilotos técnicos de una época que cubren la matriz completa de dos
+  arquitecturas por dos mecanismos de partición, con lote 32 confirmado para
+  ResNet50 y sin interpretar sus pérdidas o probabilidades como resultados
+  científicos.
 
-- completar el entrenamiento, la predicción fuera de muestra y el análisis estadístico;
-- incorporar los resultados del experimento.
+Los productos canónicos de estas etapas son
+`metadata/BEH_analytic_cohort.csv`, los archivos situados en
+`metadata/folds/` y los reportes de `metadata/qc/cohort_integrity/` y
+`metadata/qc/partition_folds/`. Su generación y sus condiciones de aceptación
+se describen en `docs/cohort_integrity.md` y `docs/partition_folds.md`.
 
-El pipeline se aplica en memoria y no modifica ni reemplaza las imágenes
-originales.
+### Componentes pendientes
+
+- congelar y versionar el protocolo y el entorno auditado;
+- realizar los entrenamientos definitivos, generar las predicciones fuera de
+  muestra e incorporar los resultados al manuscrito.
+
+El entrenador y evaluador vigentes consumen exclusivamente la cohorte y las
+particiones canónicas. Los folds históricos ya fueron retirados del árbol
+actual y permanecen recuperables en el historial de Git. El pipeline de datos
+se aplica en memoria y no modifica ni reemplaza las imágenes originales.
 
 ## Estructura del repositorio
 
@@ -79,23 +108,28 @@ tesis-xai-steatosis/
 │       ├── build_behsof_manifest.py
 │       ├── audit_beh_preprocessing.py
 │       ├── audit_beh_input_pipeline.py
-│       ├── build_beh_image_folds.py
+│       ├── build_beh_analytic_cohort.py
+│       ├── build_beh_partition_folds.py
 │       └── preprocess_behsof.py
 │   ├── training/
 │   │   └── train_beh_crossval.py
 │   └── evaluation/
 │       └── evaluate_partition_protocols.py
 ├── tests/
-│   ├── test_build_beh_image_folds.py
+│   ├── test_build_beh_analytic_cohort.py
+│   ├── test_build_beh_partition_folds.py
 │   ├── test_evaluate_partition_protocols.py
 │   ├── test_preprocess_behsof.py
 │   └── test_train_beh_crossval.py
 ├── metadata/
 │   ├── BEHSOF_manifest.csv
-│   ├── BEH_image_folds.csv
-│   ├── BEH_patient_folds.csv
+│   ├── BEH_analytic_cohort.csv
+│   ├── folds/
+│   │   ├── BEH_image_folds.csv
+│   │   └── BEH_patient_folds.csv
 │   └── qc/
-│       ├── image_level_folds/
+│       ├── cohort_integrity/
+│       ├── partition_folds/
 │       └── preprocessing_audit/
 │           ├── v1_review.csv
 │           ├── v1_parameters.json
@@ -104,7 +138,9 @@ tesis-xai-steatosis/
 ├── artifacts/
 │   └── qc/
 ├── docs/
-│   ├── image_level_folds.md
+│   ├── cohort_integrity.md
+│   ├── partition_folds.md
+│   ├── evaluation_protocol.md
 │   ├── preprocessing_audit.md
 │   ├── input_pipeline.md
 │   └── training_protocol.md
@@ -166,17 +202,64 @@ paths:
   data_root: "../tesis-xai-steatosis-data"
 ```
 
+## Pruebas automatizadas
+
+Desde la raíz del repositorio y con el entorno virtual activado, la batería
+completa se ejecuta mediante:
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+El protocolo congelado cuenta con 32 pruebas automatizadas distribuidas en
+cinco áreas:
+
+- 4 pruebas de construcción e integridad de la cohorte analítica;
+- 6 pruebas de construcción, cobertura y solapamiento de los folds;
+- 5 pruebas del preprocesamiento y las transformaciones de entrada;
+- 8 pruebas del contrato de entrenamiento; y
+- 9 pruebas del contrato de evaluación y del bootstrap.
+
+Estas pruebas verifican reglas metodológicas, determinismo, dimensiones,
+semillas, rutas, metadatos, unidades de análisis y rechazo de configuraciones
+incompatibles. No miden el rendimiento predictivo ni sustituyen el
+entrenamiento definitivo.
+
+Además, la Fase 4 incluyó cuatro pilotos técnicos de una época, uno por cada
+combinación de arquitectura y protocolo. Los pilotos comprobaron el flujo de
+extremo a extremo y la factibilidad de memoria, pero sus pérdidas y
+probabilidades no se consideran resultados científicos.
+
 ## Metadatos y control de calidad
 
 `metadata/BEHSOF_manifest.csv` es la fuente de autoridad para determinar la muestra elegible. Cada fila representa una imagen original y conserva las decisiones de inclusión o exclusión mediante `include_final`, `qc_status` y `exclusion_reason`.
 
-Para el experimento principal solo se utilizarán filas que cumplan:
+Para el experimento corregido del artículo, `metadata/BEH_analytic_cohort.csv`
+es la capa derivada que aplica la auditoría de duplicados sobre las filas BEH
+elegibles. Conserva las 1,388 filas fuente, sus SHA-256 y una decisión explícita
+de inclusión analítica; no sobrescribe el manifiesto original ni modifica
+`raw`. El procedimiento y sus condiciones de aceptación se documentan en
+`docs/cohort_integrity.md`.
+
+La selección inicial del manifiesto original utilizó:
 
 ```text
 center == "BEH"
 include_final == True
 patient_eligible == True
 ```
+
+Sobre esa selección, el experimento corregido utilizará exclusivamente las
+filas de `metadata/BEH_analytic_cohort.csv` que cumplan
+`analytic_include == True`. Las particiones canónicas de cinco repeticiones se
+encuentran en `metadata/folds/` y su auditoría en
+`metadata/qc/partition_folds/`; el procedimiento se documenta en
+`docs/partition_folds.md`.
+
+Los folds del protocolo invalidado fueron retirados del árbol de trabajo una
+vez que el entrenador y el evaluador dejaron de depender de ellos. Su
+procedencia permanece recuperable en el historial de Git y en el registro
+metodológico; no constituyen entradas vigentes del experimento.
 
 Los reportes situados en `metadata/qc/` son artefactos intermedios de trazabilidad. En particular, las alertas del reporte de outliers fueron generadas mediante heurísticas automáticas y posteriormente revisadas; no constituyen una clasificación vigente ni reemplazan al manifiesto final.
 
@@ -196,11 +279,13 @@ Se versionan:
 - documentación metodológica;
 - configuración reproducible de ejemplo;
 - manifiestos y metadatos tabulares necesarios para la trazabilidad;
-- resultados tabulares finales que no contengan imágenes médicas.
+- resultados agregados finales que no contengan imágenes médicas ni
+  predicciones identificables por paciente.
 
 Se excluyen mediante `.gitignore`:
 
 - datos médicos originales y artefactos visuales derivados;
+- historiales, predicciones y demás productos individuales de entrenamiento;
 - `config.local.yaml` y archivos de variables de entorno;
 - entornos virtuales, cachés y archivos temporales;
 - pesos, checkpoints y modelos exportados.
@@ -216,6 +301,11 @@ impide que una ejecución final se aparte accidentalmente de la configuración
 preespecificada y exige metadatos completos antes de aceptar predicciones para
 la evaluación. Los resultados definitivos deberán generarse desde cero con el
 árbol de trabajo revisado y versionado.
+
+Los productos de cada ejecución se conservan localmente en
+`results/training/` y están excluidos de Git. Después de verificar las 100
+ejecuciones, las tablas agregadas de `results/evaluation/` podrán versionarse
+como evidencia del artículo; los checkpoints permanecen fuera del repositorio.
 
 ## Privacidad y distribución de datos
 
